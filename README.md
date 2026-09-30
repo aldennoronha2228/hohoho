@@ -43,11 +43,11 @@ Schematic is a connectivity view, not electrical-rule checking or voltage analys
 
 Browser storage can be cleared or evicted. Export backups before clearing site data or switching browsers. There is no cloud sync or cross-tab conflict resolution.
 
-### Reviewable AI assistance
+### AI chat and project tools
 
-The optional assistant uses a server-side **OpenAI-compatible Chat Completions** provider. It proposes changes to existing firmware files and permitted wiring between existing pins. Review the proposal, apply or reject it, and undo it while the project revision still permits undo.
+The Assistant uses a server-side OpenAI-compatible Chat Completions provider. Plain chat answers questions without modifying the project. In Editor, enable **Use project tools** to allow one model to inspect real project/circuit data, add/remove parts, wire pins, write firmware, compile, run simulation, and read actual results through the existing Tool Layer.
 
-The assistant cannot autonomously add hardware, compile, simulate, flash, or verify electrical safety. It reports missing configuration and provider failures rather than presenting a simulated response as a real result. Live provider compatibility depends on your chosen service and model.
+Calls are sequential and bounded. Keys stay server-side. The UI shows calls and actual results; failed operations return errors rather than fabricated success. No new circuit engine, simulator, multi-agent framework, or legacy proposal pipeline is used. Physical hardware flashing is unavailable. Live provider testing requires your own configured key; see [AI chat setup](docs/wireup-ai-chat.md).
 
 ## Quick start on Windows
 
@@ -120,16 +120,16 @@ See [Getting started](docs/getting-started.md) for extra board cores, [ESP32 emu
 Set environment variables in the terminal that starts the backend:
 
 ```powershell
-$env:WIREUP_AI_API_KEY = '<your-provider-key>'
-$env:WIREUP_AI_BASE_URL = 'https://api.openai.com/v1'
-$env:WIREUP_AI_MODEL = 'gpt-4o-mini'
+$env:AI_API_KEY = '<your-provider-key>'
+$env:AI_BASE_URL = 'https://api.openai.com/v1'
+$env:AI_MODEL = 'gpt-4o-mini'
 ```
 
 Then start or restart the backend. Only the API key is required; the URL and model above are the defaults. The backend appends `/chat/completions`, uses Bearer authentication, and requests JSON output. Your provider must support this contract; a native Responses API endpoint is not interchangeable.
 
-Use the assistant's **Check configuration** button or **http://localhost:8001/api/wireup-ai/status**. A configured status confirms settings, not successful authentication, quota, or model access.
+Use the assistant's **Check configuration** button or **http://localhost:8001/api/ai/chat/status**. A configured status confirms settings, not successful authentication, quota, or model access.
 
-Keys stay on the backend. Never place them in `VITE_*`, frontend code, or committed files. Submitting a request sends your prompt and project context to the provider, whose usage charges and data policies apply. See [the detailed configuration guide](WIREUP.md#configure-the-real-ai-provider-optional).
+Keys stay on the backend. Never place them in `VITE_*`, frontend code, or committed files. Submitting a request sends your prompt and project context to the provider, whose usage charges and data policies apply. See [the detailed configuration guide](docs/wireup-ai-chat.md#server-configuration).
 
 ## Docker
 
@@ -186,6 +186,8 @@ The current Wireup verification passed **47 focused frontend tests**, the produc
 - [Documentation index](docs/intro.md)
 - [Frontend development](frontend/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Internal Wireup Tool Layer](docs/wireup-tool-layer.md)
+- [AI chat and live project tools](docs/wireup-ai-chat.md)
 - [Components](docs/components.md) and [example projects](docs/examples/README.md)
 - [Third-party notices](docs/THIRD_PARTY.md)
 - [Changes](CHANGELOG.md)

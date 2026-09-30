@@ -128,7 +128,7 @@ export function Home() {
           extraordinary.
         </h1>
         <div className="wu-home-prompt">
-          <Assistant className="wu-home-assistant" onApplied={() => navigate('/editor')} />
+          <Assistant className="wu-home-assistant" />
         </div>
         <div className="wu-home-starters">
           <p>OR BUILD ONE OF THESE</p>

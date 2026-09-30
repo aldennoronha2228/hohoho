@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import compile, compile_chip, compile_rom, flash, intellisense, libraries, micropython_libs, wireup_ai
+from app.api.routes import compile, compile_chip, compile_rom, flash, intellisense, libraries, micropython_libs, wireup_ai, ai_chat
 from app.core.config import settings
 from app.core.hooks import run_lifespan_startup
 from app.core.hooks import health_detail, health_probe
@@ -92,6 +92,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(ai_chat.router)
 app.include_router(wireup_ai.router, prefix="/api/wireup-ai", tags=["wireup-ai"])
 app.include_router(compile.router, prefix="/api/compile", tags=["compilation"])
 app.include_router(compile_chip.router, prefix="/api/compile-chip", tags=["custom-chips"])

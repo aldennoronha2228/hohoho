@@ -360,10 +360,12 @@ export function __resetChipFileSyncForTests(): void {
 export async function ensureChipWasm(
   chipId: string,
   log?: (type: 'info' | 'success' | 'error', message: string) => void,
+  guard?: { assertCurrent(): void; commit(action: () => void): void },
 ): Promise<{ ok: boolean; error?: string }> {
   // Commit any edit still sitting in the debounce — otherwise a chip.c change
   // typed moments ago compiles the previous source and reports success.
-  flushChipFileSync();
+  if (guard) guard.commit(flushChipFileSync);
+  else flushChipFileSync();
 
   // The compile is a seconds-long await; re-read and retry when the source
   // moved underneath it. The write-back merges onto the LIVE properties and
@@ -387,12 +389,14 @@ export async function ensureChipWasm(
     log?.('info', `Compiling chip "${label}" to WASM...`);
     try {
       const r = await compileChip(sourceC, String(props.chipJson ?? '') || undefined);
+      guard?.assertCurrent();
       if (!r.success || !r.wasm_base64) {
         const err = r.error || r.stderr || 'unknown error';
         log?.('error', `Chip "${label}" WASM compile failed: ${err}`);
         return { ok: false, error: err };
       }
-      flushChipFileSync();
+      if (guard) guard.commit(flushChipFileSync);
+      else flushChipFileSync();
       const fresh = useSimulatorStore.getState().components.find((c: ChipComponent) => c.id === chipId);
       if (!fresh) return { ok: false, error: 'chip removed during compile' };
       const freshProps = (fresh.properties ?? {}) as Record<string, unknown>;
@@ -400,9 +404,11 @@ export async function ensureChipWasm(
         log?.('info', `Chip "${label}" source changed during compile — recompiling.`);
         continue;
       }
-      useSimulatorStore.getState().updateComponent(chipId, {
+      const record = () => useSimulatorStore.getState().updateComponent(chipId, {
         properties: { ...freshProps, wasmBase64: r.wasm_base64, sourceHash: hash },
       } as never);
+      if (guard) guard.commit(record);
+      else record();
       log?.('success', `Chip "${label}" compiled (${r.byte_size} B WASM).`);
       return { ok: true };
     } catch (e) {

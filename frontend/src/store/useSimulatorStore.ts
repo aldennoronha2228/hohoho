@@ -4232,7 +4232,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       const elbow = previewElbow(last, endpoint.x, endpoint.y);
 
       const newWire: Wire = {
-        id: `wire-${Date.now()}`,
+        id: `wire-${generateUUID()}`,
         start: startEndpoint,
         end: endpoint,
         waypoints: normalizeWireWaypoints(

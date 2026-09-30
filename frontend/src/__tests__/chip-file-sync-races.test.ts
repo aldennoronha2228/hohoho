@@ -102,6 +102,23 @@ describe('ensureChipWasm vs concurrent edits', () => {
     expect(after.content).toBe(S2);
   });
 
+  it('does not record a guarded tool compile after its intent is cancelled', async () => {
+    seedChipFileGroups();
+    let release!: (value: unknown) => void;
+    let cancelled = false;
+    compileChip.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const guard = {
+      assertCurrent() { if (cancelled) throw new Error('Tool cancelled'); },
+      commit(action: () => void) { this.assertCurrent(); action(); },
+    };
+    const pending = ensureChipWasm(CHIP_ID, undefined, guard);
+    await Promise.resolve();
+    cancelled = true;
+    release({ success: true, wasm_base64: 'STALE', byte_size: 1 });
+    expect(await pending).toEqual({ ok: false, error: 'Tool cancelled' });
+    expect(chipProps().wasmBase64).toBe('');
+  });
+
   it('flushes a pending edit before compiling (no stale-source success)', async () => {
     seedChipFileGroups();
     syncChipFilesOnce();

@@ -49,6 +49,40 @@ import {
 import './EditorToolbar.css';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { getResolvedTheme } from '../../lib/theme';
+import { useWireupProject } from '../../wireup/project';
+import { registerToolRuntime, type ToolResult } from '../../wireup/tools/runtime';
+import { isCompiledProgramStale } from '../../utils/boardCompile';
+
+interface ToolIntent {
+  assertCurrent(): void;
+  commit(action: () => void): void;
+}
+
+function toolBuildIdentity(): string {
+  const editor = useEditorStore.getState();
+  const sim = useSimulatorStore.getState();
+  const project = useProjectStore.getState();
+  const sources = (files: typeof editor.files) => files.map(({ id, name, content }) => ({ id, name, content }));
+  return JSON.stringify({
+    projectId: project.currentProject?.id,
+    exampleId: project.currentExampleId,
+    wireupId: useWireupProject.getState().project?.id,
+    activeBoardId: sim.activeBoardId,
+    activeGroupId: editor.activeGroupId,
+    boards: sim.boards.map((board) => ({
+      id: board.id, kind: board.boardKind, group: board.activeFileGroupId,
+      language: board.languageMode, options: board.boardOptions,
+      libraries: board.libraries, uploads: board.spiffsFiles, engine: board.enginePinned,
+    })),
+    circuit: { components: sim.components.map(({ id, metadataId, x, y, properties }) => ({ id, metadataId, x, y, properties })), wires: sim.wires },
+    files: sources(editor.files),
+    groups: Object.fromEntries(Object.entries(editor.fileGroups).map(([id, files]) => [id, sources(files)])),
+    chips: sim.components.filter((c) => c.metadataId === 'custom-chip').map((c) => {
+      const p = c.properties as Record<string, unknown>;
+      return { id: c.id, source: p.sourceC, json: p.chipJson, program: p.programFile };
+    }),
+  });
+}
 
 /**
  * Output-console group for circuit pre-flight + runtime faults. Routing these
@@ -261,6 +295,22 @@ export const EditorToolbar = ({
   // Synchronous re-entrancy guard: a click while a run/verify is already in
   // flight is ignored, so rapid clicks can't stack multiple verifications.
   const runInFlightRef = useRef(false);
+  const operationInFlightRef = useRef(false);
+  const toolEpochRef = useRef(0);
+  const toolMountedRef = useRef(true);
+
+  const withOperation = async <T,>(action: () => Promise<T>): Promise<T | ToolResult> => {
+    if (operationInFlightRef.current) return { success: false, error: 'A build or run is already in progress.' };
+    operationInFlightRef.current = true;
+    try {
+      return await action();
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      operationInFlightRef.current = false;
+      setCompiling(false);
+    }
+  };
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [libManagerOpen, setLibManagerOpen] = useState(false);
   const [pendingLibraries, setPendingLibraries] = useState<string[]>([]);
@@ -354,6 +404,7 @@ export const EditorToolbar = ({
     async (
       chips: { id: string; properties: Record<string, unknown> }[],
       boardFiles: { name: string; content: string }[],
+      tool?: ToolIntent,
     ) => {
       const codeChanged = useEditorStore.getState().codeChangedSinceLastCompile;
       const updateComponent = useSimulatorStore.getState().updateComponent;
@@ -361,9 +412,11 @@ export const EditorToolbar = ({
 
       // Commit any chip.c/chip.json edit still sitting in the sync debounce
       // before reading properties — Run must never build a stale source.
-      flushChipFileSync();
+      if (tool) tool.commit(flushChipFileSync);
+      else flushChipFileSync();
 
       for (const chip of chips) {
+        tool?.assertCurrent();
         // Re-read the freshest properties each iteration (an earlier chip's
         // update doesn't touch this one, but be defensive).
         const live = useSimulatorStore.getState().components.find((c) => c.id === chip.id);
@@ -383,7 +436,7 @@ export const EditorToolbar = ({
         //    directly — e.g. by the agent — must not leave a stale binary).
         //    It writes the component itself, merging onto live properties.
         if (sourceC) {
-          const r = await ensureChipWasm(chip.id, clog);
+          const r = await ensureChipWasm(chip.id, clog, tool);
           if (!r.ok) failed++;
         }
 
@@ -413,18 +466,21 @@ export const EditorToolbar = ({
             );
             try {
               const rr = await compileRom(file.content, target, fmt);
+              tool?.assertCurrent();
               if (rr.success && rr.rom_base64) {
                 // Merge onto the LIVE properties — the compile was an await
                 // and a stale spread here would revert anything written in
                 // the meantime (the wasm step above, a concurrent edit).
                 const fresh = useSimulatorStore.getState().components.find((c) => c.id === chip.id);
-                updateComponent(chip.id, {
+                const record = () => updateComponent(chip.id, {
                   properties: {
                     ...((fresh?.properties ?? props) as Record<string, unknown>),
                     romBytes: rr.rom_base64,
                     programFile,
                   },
                 } as any);
+                if (tool) tool.commit(record);
+                else record();
                 clog('success', `ROM ready: ${rr.byte_size} B injected into "${chipLabel}".`);
               } else {
                 clog(
@@ -448,7 +504,13 @@ export const EditorToolbar = ({
     [addLog],
   );
 
-  const handleCompile = async () => {
+  const handleCompile = (tool?: ToolIntent) => withOperation(() => compileActive(tool));
+
+  const compileActive = async (tool?: ToolIntent): Promise<ToolResult> => {
+    tool?.assertCurrent();
+    if (tool && activeBoard?.languageMode === 'micropython') {
+      return { success: false, error: 'Tool-controlled MicroPython loading is unsupported; use the editor controls.' };
+    }
     setCompiling(true);
     setMessage(null);
     setConsoleOpen(true);
@@ -487,9 +549,17 @@ export const EditorToolbar = ({
       const boardFiles = activeBoard?.activeFileGroupId
         ? useEditorStore.getState().getGroupFiles(activeBoard.activeFileGroupId)
         : files;
-      await prepareCustomChips(customChips, boardFiles);
+      const prepared = await prepareCustomChips(customChips, boardFiles, tool);
+      tool?.assertCurrent();
+      if (tool && prepared.failed > 0) return { success: false, error: 'Custom-chip preparation failed. Check the output console.' };
     }
     // ── End custom-chip preparation ─────────────────────────────────────
+
+    if (tool && !activeBoard) {
+      return customChips.length > 0
+        ? { success: true, data: { preparedChips: customChips.length, electricalPaused: useElectricalStore.getState().paused } }
+        : { success: false, error: 'No programmable target is selected.' };
+    }
 
     const kind = activeBoard?.boardKind;
     // The active board's console target, defined up front so EVERY board path
@@ -506,7 +576,7 @@ export const EditorToolbar = ({
       blog('info', `${boardLabel}: no compilation needed — run Python scripts directly.`);
       setMessage({ type: 'success', text: 'Ready (no compilation needed)' });
       setCompiling(false);
-      return;
+      return { success: true, data: { boardId: activeBoard?.id, compilationRequired: false } };
     }
 
     // MicroPython mode — no backend compilation needed
@@ -518,14 +588,15 @@ export const EditorToolbar = ({
         await loadMicroPythonProgram(activeBoardId, pyFiles);
         blog('success', 'MicroPython firmware loaded successfully');
         setMessage({ type: 'success', text: 'MicroPython ready' });
+        return { success: true, data: { boardId: activeBoardId, loaded: true } };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Failed to load MicroPython';
         blog('error', errMsg);
         setMessage({ type: 'error', text: errMsg });
+        return { success: false, error: errMsg };
       } finally {
         setCompiling(false);
       }
-      return;
     }
 
     const fqbn = kind ? fqbnForLanguage(kind, activeBoard?.languageMode) : null;
@@ -534,7 +605,7 @@ export const EditorToolbar = ({
       blog('error', `No FQBN for board kind: ${kind}`);
       setMessage({ type: 'error', text: 'Unknown board' });
       setCompiling(false);
-      return;
+      return { success: false, error: 'No compilable active board selected.' };
     }
 
     blog('info', `Starting compilation for ${boardLabel} (${fqbn})...`);
@@ -563,7 +634,9 @@ export const EditorToolbar = ({
           `Editor file group (${edGroup}) diverged from the compiled board group ` +
             `(${activeBoard.activeFileGroupId}) — switching the editor to the compiled group.`,
         );
-        useEditorStore.getState().setActiveGroup(activeBoard.activeFileGroupId);
+        const selectGroup = () => useEditorStore.getState().setActiveGroup(activeBoard.activeFileGroupId);
+        if (tool) tool.commit(selectGroup);
+        else selectGroup();
       }
       const groupFiles = activeBoard?.activeFileGroupId
         ? useEditorStore.getState().getGroupFiles(activeBoard.activeFileGroupId)
@@ -625,6 +698,8 @@ export const EditorToolbar = ({
         compileOptionsForBoard(activeBoard),
       );
 
+      tool?.assertCurrent();
+
       // After the build settles, append the structured analysis on top of
       // the live stream — parseCompileResult highlights FAILED blocks and
       // tags compiler errors with type='error', which the console uses for
@@ -643,28 +718,41 @@ export const EditorToolbar = ({
 
       if (result.success) {
         const program = result.hex_content ?? result.binary_content ?? null;
+        if (tool && (!program || !activeBoardId)) {
+          if (progressBoardId) compileProgress.finish(progressBoardId, 'error');
+          return { success: false, error: 'Compilation produced no program for the active board.' };
+        }
         if (program && activeBoardId) {
-          compileBoardProgram(activeBoardId, program, { uf2: result.uf2_content ?? null });
-          if (result.has_wifi !== undefined) {
-            updateBoard(activeBoardId, { hasWifi: result.has_wifi });
-          }
-          // P2.4 auto-migration: a green build reports the libraries it
-          // really used; fold single-candidate ones into this board's
-          // declared manifest so the NEXT compile runs scoped instead of
-          // scan-all (the mode where unrelated libraries could leak in).
-          const mergedLibs = mergeSuggestedLibraries(
-            activeBoard?.libraries,
-            result.manifest_suggested_libraries,
-          );
-          if (mergedLibs) {
-            updateBoard(activeBoardId, { libraries: mergedLibs });
-            console.log('[manifest] auto-declared from build:', mergedLibs);
+          const recordProgram = () => {
+            compileBoardProgram(activeBoardId, program, { uf2: result.uf2_content ?? null });
+            if (result.has_wifi !== undefined) {
+              updateBoard(activeBoardId, { hasWifi: result.has_wifi });
+            }
+            // P2.4 auto-migration: a green build reports the libraries it
+            // really used; fold single-candidate ones into this board's
+            // declared manifest so the NEXT compile runs scoped instead of
+            // scan-all (the mode where unrelated libraries could leak in).
+            const mergedLibs = mergeSuggestedLibraries(
+              activeBoard?.libraries,
+              result.manifest_suggested_libraries,
+            );
+            if (mergedLibs) {
+              updateBoard(activeBoardId, { libraries: mergedLibs });
+              console.log('[manifest] auto-declared from build:', mergedLibs);
+            }
+          };
+          if (tool) tool.commit(recordProgram);
+          else recordProgram();
+          if (tool && useSimulatorStore.getState().boards.find(board => board.id === activeBoardId)?.compiledProgram !== program) {
+            if (progressBoardId) compileProgress.finish(progressBoardId, 'error');
+            return { success: false, error: 'The compiler returned firmware, but the existing runtime could not load it.' };
           }
         }
         setMessage({ type: 'success', text: 'Compiled successfully' });
         markCompiled();
         setMissingLibHint(false);
         if (progressBoardId) compileProgress.finish(progressBoardId, 'success');
+        return { success: true, data: { boardId: activeBoardId, compiled: !!program } };
       } else {
         if (progressBoardId) compileProgress.finish(progressBoardId, 'error');
         const errText = result.error || result.stderr || 'Compile failed';
@@ -681,12 +769,14 @@ export const EditorToolbar = ({
         const looksLikeMissingLib =
           /No such file or directory|fatal error:.*\.h|library not found/i.test(errText);
         setMissingLibHint(looksLikeMissingLib);
+        return { success: false, error: errText };
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Compile failed';
       blog('error', errMsg);
       setMessage({ type: 'error', text: errMsg });
       if (progressBoardId) compileProgress.finish(progressBoardId, 'error');
+      return { success: false, error: errMsg };
     } finally {
       setCompiling(false);
     }
@@ -716,8 +806,9 @@ export const EditorToolbar = ({
    * Warnings-only results don't block — the console entry is enough.
    */
   const checkOrBlock = useCallback(
-    async (resume: () => void): Promise<boolean> => {
+    async (resume: (() => void) | null, tool?: ToolIntent): Promise<boolean> => {
       const result = await runVerification();
+      tool?.assertCurrent();
       if (!result) return true;
       if (result.errors.length === 0 && result.warnings.length === 0) return true;
 
@@ -749,14 +840,22 @@ export const EditorToolbar = ({
 
       // Errors → also pop the modal so the user makes an explicit Run-anyway /
       // Cancel decision; the console keeps the persistent red record.
-      pendingRunRef.current = resume;
-      setVerification(result);
+      if (resume) {
+        pendingRunRef.current = resume;
+        setVerification(result);
+      }
       return false;
     },
     [runVerification, setCompileLogs, setConsoleOpen],
   );
 
-  const handleRun = async (skipVerify = false) => {
+  const handleRun = (skipVerify = false, tool?: ToolIntent) => withOperation(() => runActive(skipVerify, tool));
+
+  const runActive = async (skipVerify = false, tool?: ToolIntent): Promise<ToolResult | void> => {
+    tool?.assertCurrent();
+    if (tool && activeBoard?.languageMode === 'micropython') {
+      return { success: false, error: 'Tool-controlled MicroPython loading is unsupported; use the editor controls.' };
+    }
     console.log('[handleRun] click', { activeBoardId, running, codeChangedSinceLastCompile });
 
     // Pro gate, first thing: a run the gate refuses must not compile first.
@@ -766,7 +865,7 @@ export const EditorToolbar = ({
     // backstop (which stays, for the paths that do not come through here).
     if (activeBoardId && !running) {
       const gated = boards.find((b) => b.id === activeBoardId);
-      if (gated && blockedByBoardGate(gated.boardKind, 'run')) return;
+      if (gated && blockedByBoardGate(gated.boardKind, 'run')) return { success: false, error: 'Simulation is blocked by the board gate.' };
     }
 
     // Pre-flight: solve the circuit and check for shorts / overcurrent /
@@ -782,13 +881,14 @@ export const EditorToolbar = ({
       setVerifying(true);
       let ok = false;
       try {
-        ok = await checkOrBlock(() => handleRun(true));
+        ok = await checkOrBlock(tool ? null : () => { void handleRun(true); }, tool);
       } finally {
         setVerifying(false);
         runInFlightRef.current = false;
       }
-      if (!ok) return;
+      if (!ok) return { success: false, error: 'Circuit verification blocked simulation. Review the output console.' };
     }
+    tool?.assertCurrent();
 
     // Board-less circuits have no MCU to start. If there are custom-chip CPUs
     // on the canvas, compile them (WASM + ROM) and re-attach so they pick up
@@ -806,8 +906,11 @@ export const EditorToolbar = ({
         // logged by checkOrBlock so they survive a "Run anyway".
         setCompileLogs((prev) => prev.filter((l) => l.target?.id === CIRCUIT_CHECK_TARGET.id));
         try {
-          await prepareCustomChips(customChips, files);
+          const prepared = await prepareCustomChips(customChips, files, tool);
+          tool?.assertCurrent();
+          if (tool && prepared.failed > 0) return { success: false, error: 'Custom-chip preparation failed. Check the output console.' };
         } catch (e) {
+          if (tool) throw e;
           addLog({
             timestamp: new Date(),
             type: 'error',
@@ -869,6 +972,7 @@ export const EditorToolbar = ({
           return;
         }
         setCompiling(false);
+        tool?.assertCurrent();
         startBoard(activeBoardId);
         setMessage(null);
         return;
@@ -900,7 +1004,8 @@ export const EditorToolbar = ({
             await new Promise((resolve) => setTimeout(resolve, 300));
           }
           console.log('[handleRun] → startBoard (QEMU-Linux, no firmware)', activeBoardId);
-          startBoard(activeBoardId);
+          tool?.assertCurrent();
+        startBoard(activeBoardId);
           setMessage(null);
           return;
         }
@@ -917,10 +1022,12 @@ export const EditorToolbar = ({
           stopBoard(activeBoardId);
           await new Promise((resolve) => setTimeout(resolve, 300));
         }
-        if (!board?.compiledProgram || codeChangedSinceLastCompile) {
+        if (!board?.compiledProgram || codeChangedSinceLastCompile || (tool && isCompiledProgramStale(board))) {
           console.log('[handleRun] auto-compile + run');
           autoRunAfterCompile.current = true;
-          await handleCompile();
+          const compiled = await compileActive(tool);
+          tool?.assertCurrent();
+          if (!compiled.success) { autoRunAfterCompile.current = false; return compiled; }
           const updatedBoard = useSimulatorStore
             .getState()
             .boards.find((b) => b.id === activeBoardId);
@@ -935,7 +1042,8 @@ export const EditorToolbar = ({
               trackRunSimulation(updatedBoard.boardKind);
               reportRun(updatedBoard.boardKind);
               console.log('[handleRun] → startBoard', activeBoardId);
-              startBoard(activeBoardId);
+              tool?.assertCurrent();
+        startBoard(activeBoardId);
               setMessage(null);
             } else {
               // handleCompile returned without producing a firmware/program.
@@ -959,15 +1067,18 @@ export const EditorToolbar = ({
         trackRunSimulation(board?.boardKind);
         reportRun(board?.boardKind);
         console.log('[handleRun] → startBoard (already compiled)', activeBoardId);
+        tool?.assertCurrent();
         startBoard(activeBoardId);
         setMessage(null);
         return;
       }
 
       // Auto-compile if no program or code changed since last compile
-      if (!board?.compiledProgram || codeChangedSinceLastCompile) {
+      if (!board?.compiledProgram || codeChangedSinceLastCompile || (tool && isCompiledProgramStale(board))) {
         autoRunAfterCompile.current = true;
-        await handleCompile();
+        const compiled = await compileActive(tool);
+        tool?.assertCurrent();
+        if (!compiled.success) { autoRunAfterCompile.current = false; return compiled; }
         // After compile, check if it succeeded and run
         const updatedBoard = useSimulatorStore
           .getState()
@@ -976,7 +1087,8 @@ export const EditorToolbar = ({
           autoRunAfterCompile.current = false;
           trackRunSimulation(updatedBoard.boardKind);
           reportRun(updatedBoard.boardKind);
-          startBoard(activeBoardId);
+          tool?.assertCurrent();
+        startBoard(activeBoardId);
           setMessage(null);
         } else {
           autoRunAfterCompile.current = false;
@@ -986,7 +1098,8 @@ export const EditorToolbar = ({
 
       trackRunSimulation(board?.boardKind);
       reportRun(board?.boardKind);
-      startBoard(activeBoardId);
+      tool?.assertCurrent();
+        startBoard(activeBoardId);
       setMessage(null);
       return;
     }
@@ -994,7 +1107,9 @@ export const EditorToolbar = ({
     // Legacy fallback
     if (!compiledHex || codeChangedSinceLastCompile) {
       autoRunAfterCompile.current = true;
-      await handleCompile();
+      const compiled = await compileActive(tool);
+      tool?.assertCurrent();
+      if (!compiled.success) { autoRunAfterCompile.current = false; return compiled; }
       const hex = useSimulatorStore.getState().compiledHex;
       if (autoRunAfterCompile.current && hex) {
         autoRunAfterCompile.current = false;
@@ -1014,6 +1129,8 @@ export const EditorToolbar = ({
   };
 
   const handleStop = () => {
+    toolEpochRef.current++;
+    autoRunAfterCompile.current = false;
     trackStopSimulation();
     if (isBoardless) {
       // Freeze the chip tick (the paused flag) AND clear the chip's output
@@ -1034,6 +1151,97 @@ export const EditorToolbar = ({
     clearAllChipDrives();
     setMessage(null);
   };
+
+  const toolHandlersRef = useRef({ handleCompile, handleRun, handleStop });
+  useEffect(() => {
+    toolHandlersRef.current = { handleCompile, handleRun, handleStop };
+  });
+
+  useEffect(() => {
+    toolMountedRef.current = true;
+    const epochRef = toolEpochRef;
+    const invoke = async (action: 'compile' | 'start'): Promise<ToolResult> => {
+      if (!toolMountedRef.current) return { success: false, error: 'The editor is no longer mounted.' };
+      if (operationInFlightRef.current || pendingRunRef.current) return { success: false, error: 'A build, run, or verification decision is already pending.' };
+      const sim = useSimulatorStore.getState();
+      if (action === 'compile' && (sim.running || sim.boards.some(board => board.running))) {
+        return { success: false, error: 'Stop all simulations before compiling firmware.' };
+      }
+      if (sim.boards.length && !sim.boards.some((b) => b.id === sim.activeBoardId)) {
+        return { success: false, error: 'Select an active board first.' };
+      }
+      const epoch = toolEpochRef.current;
+      let identity = toolBuildIdentity();
+      let invalidated = false;
+      let committing = false;
+      const observe = () => {
+        if (!committing && toolBuildIdentity() !== identity) invalidated = true;
+      };
+      const offs = [
+        useEditorStore.subscribe(observe), useSimulatorStore.subscribe(observe),
+        useProjectStore.subscribe(observe), useWireupProject.subscribe(observe),
+      ];
+      const tool: ToolIntent = {
+        assertCurrent() {
+          observe();
+          if (invalidated || epoch !== toolEpochRef.current || !toolMountedRef.current) {
+            throw new Error('Tool operation cancelled: the project, target, or build inputs changed, or simulation was stopped.');
+          }
+        },
+        commit(action) {
+          tool.assertCurrent();
+          committing = true;
+          try { action(); } finally { committing = false; identity = toolBuildIdentity(); }
+        },
+      };
+      try {
+        const result = action === 'compile'
+          ? await toolHandlersRef.current.handleCompile(tool)
+          : await toolHandlersRef.current.handleRun(false, tool);
+        tool.assertCurrent();
+        if (result && !result.success) return result;
+        if (action === 'compile') return result ?? { success: false, error: 'Compilation returned no result.' };
+        const state = useSimulatorStore.getState();
+        if (state.boards.length === 0) {
+          const paused = useElectricalStore.getState().paused;
+          return paused ? { success: false, error: 'Electrical simulation remains paused.' }
+            : { success: true, data: { electricalPaused: paused } };
+        }
+        const board = state.boards.find((b) => b.id === sim.activeBoardId);
+        return board?.running
+          ? { success: true, data: { boardId: board.id, running: true, readiness: 'not verified' } }
+          : { success: false, error: 'The active board did not start. Check the output console.' };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      } finally {
+        offs.forEach((off) => off());
+      }
+    };
+    const unregister = registerToolRuntime({
+      compile: () => invoke('compile'),
+      start: () => invoke('start'),
+      stop: () => {
+        if (!toolMountedRef.current) return { success: false, error: 'The editor is no longer mounted.' };
+        try {
+          toolHandlersRef.current.handleStop();
+          const state = useSimulatorStore.getState();
+          if (state.boards.some((b) => b.running) || (state.boards.length === 0 && !useElectricalStore.getState().paused)) {
+            return { success: false, error: 'Simulation did not stop.' };
+          }
+          return { success: true, data: { stopped: true } };
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+      busy: () => operationInFlightRef.current || !!pendingRunRef.current,
+    });
+    return () => {
+      toolMountedRef.current = false;
+      epochRef.current++;
+      autoRunAfterCompile.current = false;
+      unregister();
+    };
+  }, []);
 
   const handleReset = () => {
     trackResetSimulation();
@@ -1255,7 +1463,7 @@ export const EditorToolbar = ({
 
   const handleCompileAll = () => {
     trackCompileCode();
-    void compileAllBoards();
+    void withOperation(() => compileAllBoards());
   };
 
   /**
@@ -1264,7 +1472,9 @@ export const EditorToolbar = ({
    * fresh WASM/ROM) + resuming the electrical solver when there's no board.
    * Mirrors single Run, generalised across all targets.
    */
-  const handleRunAll = async (skipVerify = false) => {
+  const handleRunAll = (skipVerify = false) => withOperation(() => runAll(skipVerify));
+
+  const runAll = async (skipVerify = false) => {
     const sim = useSimulatorStore.getState();
     const boardsList = sim.boards;
     const chips = sim.components.filter((c) => c.metadataId === 'custom-chip');
@@ -1682,24 +1892,26 @@ export const EditorToolbar = ({
     resetBoard: () => handleReset(),
     toggleConsole: () => setConsoleOpen((v) => !v),
   });
-  const menuCommandsRef = useRef(makeMenuCommands());
-  menuCommandsRef.current = makeMenuCommands();
+  const menuCommandsRef = useRef<ReturnType<typeof makeMenuCommands> | null>(null);
+  useEffect(() => {
+    menuCommandsRef.current = makeMenuCommands();
+  });
   useEffect(() => {
     const offs = [
-      registerEditorCommand('project.import', () => menuCommandsRef.current.import()),
-      registerEditorCommand('project.export', () => menuCommandsRef.current.export()),
-      registerEditorCommand('project.exportVlx', () => menuCommandsRef.current.exportVlx()),
-      registerEditorCommand('project.exportBom', () => menuCommandsRef.current.bom()),
-      registerEditorCommand('project.exportScreenshot', () => menuCommandsRef.current.screenshot()),
-      registerEditorCommand('firmware.upload', () => menuCommandsRef.current.firmware()),
-      registerEditorCommand('project.share', () => menuCommandsRef.current.share()),
-      registerEditorCommand('project.githubSync', () => menuCommandsRef.current.githubSync()),
-      registerEditorCommand('sim.record', () => menuCommandsRef.current.record()),
-      registerEditorCommand('sim.compile', () => menuCommandsRef.current.compile()),
-      registerEditorCommand('sim.run', () => menuCommandsRef.current.run()),
-      registerEditorCommand('sim.stop', () => menuCommandsRef.current.stop()),
-      registerEditorCommand('sim.resetBoard', () => menuCommandsRef.current.resetBoard()),
-      registerEditorCommand('view.toggleConsole', () => menuCommandsRef.current.toggleConsole()),
+      registerEditorCommand('project.import', () => menuCommandsRef.current?.import()),
+      registerEditorCommand('project.export', () => menuCommandsRef.current?.export()),
+      registerEditorCommand('project.exportVlx', () => menuCommandsRef.current?.exportVlx()),
+      registerEditorCommand('project.exportBom', () => menuCommandsRef.current?.bom()),
+      registerEditorCommand('project.exportScreenshot', () => menuCommandsRef.current?.screenshot()),
+      registerEditorCommand('firmware.upload', () => menuCommandsRef.current?.firmware()),
+      registerEditorCommand('project.share', () => menuCommandsRef.current?.share()),
+      registerEditorCommand('project.githubSync', () => menuCommandsRef.current?.githubSync()),
+      registerEditorCommand('sim.record', () => menuCommandsRef.current?.record()),
+      registerEditorCommand('sim.compile', () => menuCommandsRef.current?.compile()),
+      registerEditorCommand('sim.run', () => menuCommandsRef.current?.run()),
+      registerEditorCommand('sim.stop', () => menuCommandsRef.current?.stop()),
+      registerEditorCommand('sim.resetBoard', () => menuCommandsRef.current?.resetBoard()),
+      registerEditorCommand('view.toggleConsole', () => menuCommandsRef.current?.toggleConsole()),
     ];
     return () => offs.forEach((off) => off());
   }, []);
@@ -1757,7 +1969,7 @@ export const EditorToolbar = ({
           <div className="toolbar-group">
             {/* Compile */}
             <button
-              onClick={handleCompile}
+              onClick={() => { void handleCompile(); }}
               disabled={compiling || !activeBoard}
               className="tb-btn tb-btn-compile"
               title={
