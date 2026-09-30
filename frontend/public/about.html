@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About Wireup — Credits &amp; Licenses</title>
+  <meta name="description" content="Wireup is a local circuit and microcontroller simulator built on Velxio and open-source emulation libraries. Upstream credits and licensing information." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101820; color: #f8fafc; }
+    body { max-width: 800px; margin: auto; padding: 32px 24px; line-height: 1.7; }
+    a { color: #5eead4; text-underline-offset: 3px; }
+    a:focus-visible { outline: 2px solid #5eead4; outline-offset: 4px; }
+    header { display: flex; align-items: center; gap: 12px; }
+    h1, h2 { line-height: 1.25; }
+    h2 { margin-top: 36px; }
+    li { margin-bottom: 12px; }
+    code { overflow-wrap: anywhere; }
+    footer { border-top: 1px solid #334155; margin-top: 36px; padding-top: 20px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <header><img src="/favicon.svg" width="48" height="48" alt="" /><h1>Wireup</h1></header>
+  <p>A local, open-source circuit and microcontroller workspace. Write firmware, connect components, compile, and explore how your circuit behaves.</p>
+  <nav aria-label="Wireup navigation"><a href="/">Home</a> · <a href="/editor/">Editor</a> · <a href="/examples">Examples</a></nav>
+  <h2>Built on Velxio</h2>
+  <p>Wireup is a rebranded derivative of <a href="https://github.com/davidmonterocrespo24/velxio" rel="noopener noreferrer">Velxio</a>, created by David Montero Crespo and its contributors. The original project's authorship, copyright notices, and license are preserved. Wireup is not the official Velxio hosted service and does not imply endorsement by its authors or by the projects below.</p>
+  <h2>License &amp; corresponding source</h2>
+  <p>This derivative remains subject to the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License, version 3</a>. The repository's <code>LICENSE</code> contains the full terms. Rebranding does not grant a separate commercial license or change third-party terms.</p>
+  <p>If you distribute or publicly host a modified build, make the complete corresponding source for that deployed version, including your changes and build instructions, available as required by the license. The upstream source link alone does not include Wireup's modifications. Ask the operator of this instance for its matching source distribution.</p>
+  <h2>Open-source acknowledgments</h2>
+  <ul>
+    <li><a href="https://github.com/wokwi/avr8js">avr8js</a>, <a href="https://github.com/wokwi/rp2040js">rp2040js</a>, and <a href="https://github.com/wokwi/wokwi-elements">wokwi-elements</a> by Wokwi and contributors — MIT-licensed CPU emulation and electronic Web Components.</li>
+    <li><a href="https://www.ngspice.org/">ngspice</a> and <a href="https://www.npmjs.com/package/eecircuit-engine">EEcircuit engine</a> — SPICE simulation and its WebAssembly integration. See their distributed license notices for applicable terms.</li>
+    <li><a href="https://www.qemu.org/">QEMU</a> and the <a href="https://github.com/lcgamboa/qemu">lcgamboa fork</a> — backend emulation for supported architectures. QEMU is primarily GPLv2; individual files and bundled components retain their own notices.</li>
+    <li><a href="https://github.com/arduino/arduino-cli">arduino-cli</a> — Arduino compilation tooling (GPLv3). Installed board cores, firmware, and sketch libraries have separate licenses.</li>
+    <li><a href="https://react.dev/">React</a>, <a href="https://vite.dev/">Vite</a>, <a href="https://github.com/microsoft/monaco-editor">Monaco Editor</a>, <a href="https://github.com/pmndrs/zustand">Zustand</a>, <a href="https://www.i18next.com/">i18next</a>, and <a href="https://fastapi.tiangolo.com/">FastAPI</a> — application, editing, localization, and API foundations. These projects are MIT-licensed; transitive dependencies retain their own terms.</li>
+    <li>Fritzing-derived artwork — <a href="/component-svgs/fritzing/ATTRIBUTION.md">original attribution</a> and <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. Other board artwork, fonts, firmware, and examples retain their embedded credits and licenses.</li>
+  </ul>
+  <p>This is an acknowledgment summary, not an exhaustive software bill of materials. Consult dependency packages, artwork metadata, firmware notices, and the source repository for complete copyright and license texts.</p>
+  <h2>Compatibility</h2>
+  <p>Wireup continues to import and export <code>.vlx</code> projects and Wokwi bundles. Legacy <code>velxio-*</code> element names, project format markers, storage keys, and API contracts remain unchanged for compatibility.</p>
+  <footer>The connected-circuit W favicon was drawn specifically for Wireup. Arduino, Raspberry Pi, ESP32, Wokwi, and other product names belong to their respective owners.</footer>
+</body>
+</html>

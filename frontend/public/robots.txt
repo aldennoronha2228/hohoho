@@ -1,0 +1,15 @@
+# One group, no blank lines inside it: some crawlers treat a blank line as
+# the end of a group, which left the Disallow rules below orphaned.
+User-agent: *
+Allow: /
+# UUID-based duplicate of /:username/:slug (the canonical URL); crawling it
+# is wasted budget.
+Disallow: /project/
+# API endpoints are not pages.
+Disallow: /api/
+# Auth and admin pages are deliberately NOT disallowed here: they carry a
+# noindex meta tag, and a page has to be crawlable for that tag to be seen —
+# a disallowed URL can still be indexed from links, title-less.
+
+# Set an absolute Sitemap URL for this deployment before public indexing.
+# Wireup does not assume a hosted domain or a private-overlay sitemap.

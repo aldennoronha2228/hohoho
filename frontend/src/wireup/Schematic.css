@@ -1,0 +1,135 @@
+.wu-schematic {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--wu-text);
+  background: var(--wu-bg);
+  font-family: 'Wireup Inter', Inter, system-ui, sans-serif;
+}
+.wu-schematic button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--wu-line);
+  border-radius: 6px;
+  background: var(--wu-panel-raised);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wu-schematic button:hover { background: var(--wu-accent-soft); }
+.wu-schematic button:disabled { opacity: .4; cursor: not-allowed; }
+.wu-schematic button:focus-visible,
+.wu-schematic summary:focus-visible,
+.wu-schematic-svg:focus-visible {
+  outline: 2px solid var(--wu-accent);
+  outline-offset: -2px;
+}
+.wu-schematic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--wu-line);
+  background: var(--wu-panel);
+  flex-shrink: 0;
+}
+.wu-schematic-header > div { display: flex; align-items: center; gap: 8px; }
+.wu-schematic-header strong { font-size: 12px; font-weight: 600; }
+.wu-schematic-header button { padding: 6px 9px; }
+.wu-schematic-badge { font-size: 8px; letter-spacing: 1px; color: var(--wu-muted); background: var(--wu-accent-soft); border-radius: 3px; padding: 3px 5px; }
+.wu-schematic-body { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.wu-schematic-stage { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(ellipse at center, var(--wu-panel) 0%, var(--wu-bg) 85%); }
+.wu-schematic-svg { display: block; position: absolute; inset: 0; touch-action: none; cursor: grab; user-select: none; }
+.wu-schematic-svg:active { cursor: grabbing; }
+.wu-schematic-wires polyline { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.wu-schematic-wires .wu-schematic-seating { stroke-dasharray: 4 3; }
+.wu-schematic-wires .is-selected polyline { stroke-width: 2.8; }
+.wu-schematic-wires .is-muted { opacity: .22; }
+.wu-schematic-symbol rect { fill: var(--wu-panel); stroke: var(--wu-symbol); stroke-width: 1.3; }
+.wu-schematic-symbol.is-board rect { stroke: var(--wu-symbol); fill: var(--wu-panel-raised); }
+.wu-schematic-symbol.is-selected rect { stroke: var(--wu-accent); stroke-width: 2.5; }
+.wu-schematic-symbol line { stroke: var(--wu-symbol); stroke-width: 1.3; }
+.wu-schematic-symbol circle { stroke: var(--wu-symbol); stroke-width: 1; fill: var(--wu-symbol); }
+.wu-schematic-symbol text { fill: var(--wu-text); font-family: 'Wireup Inter', Inter, system-ui, sans-serif; pointer-events: none; }
+.wu-schematic-symbol .wu-schematic-part-label { font-size: 12px; font-weight: 600; }
+.wu-schematic-symbol .wu-schematic-reference { font-size: 10px; fill: var(--wu-muted); }
+.wu-schematic-symbol .wu-schematic-pin-label { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+.wu-schematic-symbol .wu-schematic-unwired { font-size: 11px; fill: var(--wu-muted); }
+.wu-schematic-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 35px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--wu-line);
+  border-radius: 9px;
+  background: var(--wu-panel);
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--wu-bg) 33%, transparent);
+  white-space: nowrap;
+}
+.wu-schematic-controls button { min-width: 28px; height: 28px; border-color: transparent; padding: 0 6px; }
+.wu-schematic-controls button[aria-pressed=true] { color: var(--wu-accent); }
+.wu-schematic-controls output { min-width: 39px; text-align: center; font-size: 10px; color: var(--wu-muted); font-variant-numeric: tabular-nums; }
+.wu-schematic-control-divider { width: 1px; height: 16px; background: var(--wu-line); margin: 0 3px; }
+.wu-schematic-hint { position: absolute; bottom: 13px; left: 0; width: 100%; text-align: center; color: var(--wu-muted); font-size: 9px; pointer-events: none; }
+.wu-schematic-empty { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(320px, 85%); text-align: center; pointer-events: none; color: var(--wu-muted); }
+.wu-schematic-empty > svg { color: var(--wu-accent); opacity: .65; }
+.wu-schematic-empty h2 { color: var(--wu-text); font-size: 16px; margin: 14px 0 8px; }
+.wu-schematic-empty p { font-size: 12px; line-height: 1.7; margin: 0; }
+.wu-schematic-sheet { width: 228px; flex-shrink: 0; padding: 17px 13px; border-left: 1px solid var(--wu-line); background: var(--wu-panel); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--wu-line) transparent; }
+.wu-schematic-sheet-title { display: flex; align-items: center; justify-content: space-between; font-size: 10px; letter-spacing: 1.2px; color: var(--wu-text); }
+.wu-schematic-sheet-title span { font-size: 7px; letter-spacing: .6px; color: var(--wu-muted); }
+.wu-schematic-stats { display: flex; flex-wrap: wrap; gap: 14px; margin: 19px 0; }
+.wu-schematic-stats > div { flex: 1; min-width: 48px; display: flex; flex-direction: column-reverse; gap: 5px; }
+.wu-schematic-stats dt { font-size: 9px; color: var(--wu-muted); }
+.wu-schematic-stats dd { font: 19px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--wu-text); margin: 0; }
+.wu-schematic-download { width: 100%; padding: 8px; }
+.wu-schematic-note { margin: 14px 0; font-size: 10px; line-height: 1.65; color: var(--wu-muted); }
+.wu-schematic-error { font-size: 11px; line-height: 1.6; color: var(--wu-danger); overflow-wrap: anywhere; }
+.wu-schematic-warning { color: var(--wu-warning-text); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; margin: 12px 0; }
+.wu-schematic-warning summary { cursor: pointer; }
+.wu-schematic-warning ul { padding-left: 15px; }
+.wu-schematic-list { border-top: 1px solid var(--wu-line); margin-top: 12px; padding-top: 12px; }
+.wu-schematic-list summary { font-size: 11px; color: var(--wu-text); cursor: pointer; }
+.wu-schematic-list summary > svg { vertical-align: -2px; margin: 0 4px; }
+.wu-schematic-list ul { margin: 10px 0 0; padding: 0; list-style: none; }
+.wu-schematic-list li + li { margin-top: 5px; }
+.wu-schematic-list button { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; padding: 9px 8px; width: 100%; text-align: left; border-color: transparent; background: var(--wu-bg); overflow-wrap: anywhere; }
+.wu-schematic-list button[aria-pressed=true] { border-color: var(--wu-accent); background: var(--wu-accent-soft); }
+.wu-schematic-list strong { font-weight: 500; font-size: 11px; }
+.wu-schematic-list code { font: 9px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--wu-muted); }
+.wu-schematic-list small { color: var(--wu-muted); font-size: 9px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .wu-schematic-sheet { width: 185px; padding: 14px 10px; }
+  .wu-schematic-sheet-title span { display: none; }
+}
+@media (max-width: 600px) {
+  .wu-schematic-body { flex-direction: column; }
+  .wu-schematic-stage { flex: 1 1 220px; min-height: 180px; }
+  .wu-schematic-sheet { width: auto; max-height: 155px; border-left: 0; border-top: 1px solid var(--wu-line); flex: 0 1 auto; padding: 12px; }
+  .wu-schematic-stats { display: inline-flex; width: calc(100% - 110px); margin: 12px 0; gap: 10px; }
+  .wu-schematic-download { width: 96px; margin-left: 10px; vertical-align: top; margin-top: 13px; }
+  .wu-schematic-header { padding: 7px 10px; gap: 8px; }
+  .wu-schematic-header button { font-size: 10px; }
+  .wu-schematic-badge { display: none; }
+  .wu-schematic-controls { gap: 0; padding: 4px; bottom: 26px; }
+  .wu-schematic-controls button { min-width: 30px; height: 32px; padding: 0 5px; }
+  .wu-schematic-controls button > span { display: none; }
+  .wu-schematic-hint { font-size: 8px; bottom: 10px; }
+}
+@media (max-height: 450px) and (max-width: 600px) {
+  .wu-schematic-sheet { max-height: 88px; }
+  .wu-schematic-stage { min-height: 130px; }
+}

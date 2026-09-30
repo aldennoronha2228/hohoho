@@ -1,0 +1,16 @@
+import { chromium } from '@playwright/test';
+import fs from 'node:fs';
+const browser = await chromium.launch({channel:'chrome',headless:true});
+const page = await browser.newPage({ viewport:{width:1440,height:1000} });
+page.on('pageerror', e => console.log('PAGEERROR',e.message));
+page.on('console', m => { if(m.type()==='error') console.log('CONSOLE',m.text()); });
+await page.goto('http://127.0.0.1:5173/');
+await page.waitForTimeout(3000);
+console.log('BODY', await page.locator('body').innerText());
+await page.locator('.wu-home-template').first().click();
+await page.waitForURL('**/editor');
+await page.waitForTimeout(1500);
+console.log('EDITOR', await page.locator('body').innerText());
+fs.mkdirSync('artifacts',{recursive:true});
+await page.screenshot({path:'artifacts/wireup-home.png',fullPage:true});
+await browser.close();

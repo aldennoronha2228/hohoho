@@ -1,0 +1,29 @@
+# Wireup — Local Circuit & Microcontroller Simulator
+
+> Wireup is an open-source, self-hostable circuit and firmware workspace derived from Velxio by David Montero Crespo and contributors. The OSS build is anonymous and single-user, with portable project files rather than server-side accounts.
+
+## Capabilities
+
+- Multi-file code editor with Monaco, compilation through a local arduino-cli backend, and Serial Monitor.
+- Circuit canvas with electronic components, wire routing, and SPICE analog simulation using ngspice WebAssembly.
+- Browser-side AVR8 and RP2040 emulation; additional targets require their matching backend toolchains, firmware, and emulators.
+- Import/export of .vlx projects and Wokwi ZIP bundles. Legacy format markers and API identifiers are preserved for compatibility.
+- Run locally with a Python backend and Vite frontend, or build the repository's standalone Docker image.
+
+## Local resources
+
+- [Home](/)
+- [Editor](/editor/)
+- [Examples](/examples)
+- [About, credits, and licenses](/about.html)
+
+The repository's WIREUP.md contains Windows PowerShell setup, Docker startup, checks, and troubleshooting. No official Wireup public domain is assumed. The upstream hosted service's paid plans, accounts, AI quotas, cloud saves, and commercial desktop licensing are not features promised by this OSS derivative.
+
+## Credits and licensing
+
+Wireup remains subject to GNU AGPLv3. Original copyright notices, bundled artwork attribution, dependency licenses, and firmware terms remain applicable. Operators distributing or hosting modified versions must provide complete corresponding source as required by the license, including Wireup changes.
+
+- [Velxio upstream source](https://github.com/davidmonterocrespo24/velxio)
+- [GNU AGPLv3](https://www.gnu.org/licenses/agpl-3.0.html)
+- [avr8js](https://github.com/wokwi/avr8js), [rp2040js](https://github.com/wokwi/rp2040js), and [wokwi-elements](https://github.com/wokwi/wokwi-elements) by Wokwi and contributors (MIT).
+- ngspice, EEcircuit engine, QEMU/lcgamboa, arduino-cli, and the React/Vite/FastAPI application ecosystem retain their respective licenses.
