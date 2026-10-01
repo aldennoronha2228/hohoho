@@ -13,6 +13,8 @@ from app.services.ai_chat import (
     OpenAICompatibleChatProvider,
 )
 
+from app.services.build_questions import BuildQuestionsRequest, BuildQuestionsResponse, generate_build_questions
+
 router = APIRouter(prefix="/api/ai/chat", tags=["AI chat"])
 
 
@@ -27,8 +29,8 @@ def get_chat_provider() -> ChatProvider:
 async def chat_status() -> dict:
     try:
         settings = ChatSettings.from_env()
-    except ChatError:
-        return {"configured": False, "model": "", "message": "AI chat configuration is invalid. Check server AI_BASE_URL and AI_MODEL."}
+    except ChatError as exc:
+        return {"configured": False, "model": "", "message": exc.detail}
     return {"configured": settings.configured, "model": settings.model, "message": "Provider settings are configured; connectivity has not been checked." if settings.configured else "Set AI_API_KEY on the server to enable chat."}
 
 
@@ -68,6 +70,22 @@ async def read_turn_request(request: Request) -> TurnRequest:
         return TurnRequest.model_validate_json(body)
     except ValidationError:
         raise HTTPException(status_code=422, detail="Invalid tool conversation, call IDs, or limits.") from None
+
+
+async def read_questions_request(request: Request) -> BuildQuestionsRequest:
+    body = await read_body(request, MAX_BODY_BYTES)
+    try:
+        return BuildQuestionsRequest.model_validate_json(body)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Enter a project request of 1–7000 characters.") from None
+
+
+@router.post("/questions", response_model=BuildQuestionsResponse)
+async def build_questions(payload: BuildQuestionsRequest = Depends(read_questions_request), provider: ChatProvider = Depends(get_chat_provider)) -> BuildQuestionsResponse:
+    try:
+        return await generate_build_questions(payload, provider)
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
 
 
 @router.post("/turn", response_model=TurnResponse)

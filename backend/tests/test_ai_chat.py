@@ -34,6 +34,7 @@ VALID_REPLY = {
 
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch):
+    monkeypatch.setattr(ai_chat, 'dotenv_values', lambda _: {})
     for name in ("AI_API_KEY", "AI_BASE_URL", "AI_MODEL"):
         monkeypatch.delenv(name, raising=False)
 
@@ -90,6 +91,7 @@ def test_real_protocol_request_with_mocked_transport(monkeypatch):
     assert request.headers["authorization"] == "Bearer " + SECRET
     assert json.loads(request.content) == {
         "model": DEFAULT_MODEL,
+        "max_tokens": 1024,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *history["messages"]],
     }
     assert request.extensions["timeout"]["connect"] == 10.0

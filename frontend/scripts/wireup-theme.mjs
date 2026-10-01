@@ -6,7 +6,7 @@ const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 fs.mkdirSync('artifacts', { recursive: true });
-const root = 'http://127.0.0.1:5173';
+const root = 'http://localhost:5173';
 async function theme(mode) {
   const current = await page.locator('html').getAttribute('data-theme');
   if (current !== mode) await page.locator('.wu-header .wu-theme-toggle').click();

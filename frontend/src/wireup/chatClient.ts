@@ -22,13 +22,18 @@ export type ChatStatus = z.infer<typeof statusSchema>;
 const responseSchema = z.object({ message: chatMessageSchema.refine(message => message.role === 'assistant', 'Expected an assistant message.'), model: z.string() }).strict();
 
 async function request(path: string, signal: AbortSignal, body?: unknown): Promise<unknown> {
-  const response = await fetch(`${getApiBase()}/ai/chat${path}`, {
+  let response: Response;
+  try { response = await fetch(`${getApiBase()}/ai/chat${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body), signal,
-  });
+  }); } catch (error) {
+    if (signal.aborted) throw error;
+    throw new Error('Cannot reach the Wireup backend. Start it on port 8001, then check configuration again.');
+  }
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
+    if ([502, 503, 504].includes(response.status) && data === null) throw new Error('The Wireup backend is unavailable. Start it on port 8001, then check configuration again.');
     const detail = z.object({ detail: z.string() }).safeParse(data);
     throw new Error(detail.success ? detail.data.detail : `Wireup chat request failed (${response.status}).`);
   }
@@ -42,7 +47,7 @@ export async function sendChat(messages: ChatMessage[], signal: AbortSignal, too
   const last = parsed.at(-1)!;
   if (!tools && (last.role !== 'user' || parsed.some(message => message.role === 'tool' || message.tool_calls))) throw new Error('Plain chat must end with a user message and contain no tool calls.');
   if (parsed.some(message => message.role === 'user' && (!message.content?.trim() || message.content.length > 8000))) throw new Error('Enter a user message of 1–8000 characters.');
-  const body = { messages: parsed };
+  const body = { messages: tools ? parsed : parsed.map(({ role, content }) => ({ role, content })) };
   if (new TextEncoder().encode(JSON.stringify(body)).length > (tools ? 2097152 : 131072)) throw new Error('Conversation is too large. Start a new chat.');
   const response = responseSchema.parse(await request(tools ? '/turn' : '', signal, body));
   if (!response.message.content?.trim() && !response.message.tool_calls?.length) throw new Error('The provider returned an empty response.');
@@ -67,10 +72,13 @@ export async function runChatTurn(
   approve?: ApproveTool,
 ): Promise<{ messages: ChatMessage[]; model: string }> {
   const history = [...initial];
-  let calls = 0;
-  let compileAttempts = 0;
-  let simulationAttempts = 0;
-  const callLimit = 64;
+  let lastUser = -1;
+  for (let index = initial.length - 1; index >= 0; index--) { if (initial[index].role === 'user') { lastUser = index; break; } }
+  const previousCalls = initial.slice(lastUser + 1).flatMap(message => message.tool_calls ?? []);
+  let calls = previousCalls.length;
+  let compileAttempts = previousCalls.filter(call => call.function.name === 'compile_firmware').length;
+  let simulationAttempts = previousCalls.filter(call => call.function.name === 'start_simulation').length;
+  const callLimit = 15;
   let projectId: string | null | undefined;
   let expectedSnapshot: string | undefined;
   let initialProject: ApprovalProject | undefined;
@@ -106,6 +114,7 @@ export async function runChatTurn(
       try { args = JSON.parse(call.function.arguments) as Record<string, unknown>; }
       catch { args = {}; }
       const activity: ToolActivity = { id: call.id, name: call.function.name, args, status: 'running' };
+      calls++;
       let rejected = false;
       const reason = initialProject ? destructiveReason(activity, initialProject, authoredFiles) : null;
       if (reason) {
@@ -117,7 +126,7 @@ export async function runChatTurn(
         rejected = !allowed;
       }
       if (rejected) outcome = { success: false, error: 'User rejected this change. No changes were made by this tool.' };
-      else if (++calls > callLimit) outcome = { success: false, error: 'This turn reached its 64-operation limit. Ask a smaller follow-up.' };
+      else if (calls > callLimit) outcome = { success: false, error: 'This turn reached its 15-operation limit. Ask a smaller follow-up.' };
       else if (call.function.name === 'compile_firmware' && ++compileAttempts > 3) outcome = { success: false, error: 'Compilation retry limit reached after three attempts. Report the actual unresolved error.' };
       else if (call.function.name === 'start_simulation' && ++simulationAttempts > 3) outcome = { success: false, error: 'Simulation retry limit reached after three attempts. Report the actual unresolved problem.' };
       else {
@@ -125,6 +134,7 @@ export async function runChatTurn(
         onProgress({ messages: [...history], operation: call.function.name, activity: { ...activity } });
         try {
           outcome = await executeWireupTool(call.function.name, args);
+          if (call.function.name === 'add_component') await new Promise(resolve => setTimeout(resolve, 75));
           await assertProject(true);
           if (outcome.success && ['set_firmware', 'add_firmware_file'].includes(call.function.name)) {
             const file = (outcome.data as { file?: string }).file;
@@ -132,7 +142,16 @@ export async function runChatTurn(
           }
         } catch (error) { outcome = { success: false, error: error instanceof Error ? error.message : String(error) }; }
       }
-      const content = JSON.stringify(outcome);
+      let modelOutcome = outcome;
+      if (outcome.success && call.function.name === 'get_project_state') {
+        const data = outcome.data as { project: unknown; parts: unknown; snapshot: { circuit: { boards: unknown; components: unknown; wires: unknown }; editor: { activeGroupId: string; fileGroups: Record<string, { id: string; name: string; content: string }[]> } } };
+        modelOutcome = { success: true, data: { project: data.project, parts: data.parts, circuit: { boards: (data.snapshot.circuit.boards as Record<string, unknown>[]).map(board => ({ id: board.id, boardKind: board.boardKind, activeFileGroupId: board.activeFileGroupId, libraries: board.libraries })), components: data.snapshot.circuit.components, wires: data.snapshot.circuit.wires }, firmware: { active_group_id: data.snapshot.editor.activeGroupId, files: Object.entries(data.snapshot.editor.fileGroups).flatMap(([group_id, files]) => files.map(({ id, name, content }) => ({ file: id, name, content, group_id }))) } } };
+      }
+      if (outcome.success && call.function.name === 'search_components') {
+        const data = outcome.data as { components: Record<string, unknown>[] };
+        modelOutcome = { success: true, data: { components: data.components.slice(0, 12).map(part => ({ component_type: part.component_type, name: part.name, category: part.category, description: part.description, properties: part.properties })), total_matches: data.components.length } };
+      }
+      const content = JSON.stringify(modelOutcome);
       history.push({ role: 'tool', tool_call_id: call.id, content: content.length > 524288 ? JSON.stringify({ success: false, error: 'Tool result is too large to send. Request a smaller result.' }) : content });
       onProgress({ messages: [...history], activity: { ...activity, status: rejected ? 'rejected' : outcome.success ? 'success' : 'error', result: outcome } });
       signal.throwIfAborted();

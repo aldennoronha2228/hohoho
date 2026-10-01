@@ -78,11 +78,7 @@ async function mountedPins(componentId: string) {
   const deadline = Date.now() + 2_000;
   while (true) {
     const pins = readPinInfo(document.getElementById(componentId));
-    if (pins) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const ready = readPinInfo(document.getElementById(componentId));
-      if (ready) return { pins_available: true, pins: ready.map(pin => ({ name: pin.name })) };
-    }
+    if (pins) return { pins_available: true, pins: pins.map(pin => ({ name: pin.name })) };
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error(`Component ${componentId} was created but is unmounted or its pin info is unavailable after 2 seconds. Open the circuit editor and retry get_project_state(); do not add it again.`);
     await new Promise(resolve => setTimeout(resolve, Math.min(25, remaining)));

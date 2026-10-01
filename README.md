@@ -188,6 +188,7 @@ The current Wireup verification passed **47 focused frontend tests**, the produc
 - [Architecture](docs/ARCHITECTURE.md)
 - [Internal Wireup Tool Layer](docs/wireup-tool-layer.md)
 - [AI chat and live project tools](docs/wireup-ai-chat.md)
+- [Workflow report comparison](docs/workflow-report-comparison.md)
 - [Components](docs/components.md) and [example projects](docs/examples/README.md)
 - [Third-party notices](docs/THIRD_PARTY.md)
 - [Changes](CHANGELOG.md)

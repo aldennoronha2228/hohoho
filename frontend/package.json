@@ -29,6 +29,7 @@
     "test:libraries": "RUN_LIBRARY_TESTS=1 vitest run src/__tests__/library-compile.integration.test.ts",
     "test:chipbus": "RUN_CHIPBUS_TESTS=1 vitest run src/__tests__/chipbus-galaksija",
     "test:visual": "node ../scripts/visual-led-test.mjs",
+    "test:wireup-activity": "node scripts/wireup-activity.mjs",
     "test:wireup-chat": "node scripts/wireup-chat.mjs",
     "test:wireup-ai-project": "node scripts/wireup-ai-project.mjs",
     "test:wireup-tools": "node scripts/wireup-tools.mjs",

@@ -9,6 +9,7 @@ import { blockedByBoardGate } from '../../lib/proBoardGate';
 import { useElectricalStore } from '../../store/useElectricalStore';
 import { type VerificationResult } from '../../simulation/verify/circuitVerifier';
 import { verifyCircuitFromStore } from '../../simulation/verify/verifyFromStore';
+import { recordCircuitVerification } from '../../wireup/tools/buildResult';
 import { CircuitVerificationModal } from '../simulator/CircuitVerificationModal';
 import type { BoardKind, LanguageMode } from '../../types/board';
 import { BOARD_KIND_FQBN, BOARD_SUPPORTS_ESPIDF, BOARD_SUPPORTS_MICROPYTHON, fqbnForLanguage, isKnownBoardKind, isPiBoardKind, boardDisplayName } from '../../types/board';
@@ -809,6 +810,7 @@ export const EditorToolbar = ({
     async (resume: (() => void) | null, tool?: ToolIntent): Promise<boolean> => {
       const result = await runVerification();
       tool?.assertCurrent();
+      recordCircuitVerification(result);
       if (!result) return true;
       if (result.errors.length === 0 && result.warnings.length === 0) return true;
 

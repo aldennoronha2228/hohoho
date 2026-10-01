@@ -3,8 +3,8 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 const context=await browser.newContext({viewport:{width:1481,height:900},acceptDownloads:true});
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
-await page.goto('http://127.0.0.1:5173/');await page.getByRole('button',{name:'Blink an LED',exact:true}).click();await page.waitForURL('**/editor');
-const assistant=page.locator('.wu-assistant');await assistant.locator('.wu-ai-configuration summary').click();await expect(assistant).toContainText('AI_API_KEY');
+await page.goto('http://localhost:5173/');await page.getByRole('button',{name:'Blink an LED',exact:true}).click();await page.waitForURL('**/editor');
+const assistant=page.locator('.wu-assistant');await assistant.locator('.wu-ai-configuration summary').click();await expect(assistant).toContainText('Keys stay on the server');
 await page.route('**/api/ai/chat/status',r=>r.fulfill({json:{configured:true,model:'browser-test',message:'Test settings configured'}}));
 await page.route('**/api/ai/chat',r=>r.fulfill({json:{model:'browser-test',message:{role:'assistant',content:'Test chat transport response.'}}}));
 await assistant.getByRole('button',{name:'Check configuration'}).click();
@@ -22,10 +22,10 @@ await page.locator('input[type=file]').setInputFiles('artifacts/reference-projec
 await page.getByRole('button',{name:'Schematic BETA',exact:true}).click();await expect(page.locator('.wu-schematic-stats')).toContainText('0');
 await page.evaluate(()=>window.__velxioStores.useSimulatorStore.setState({boards:[],components:[],wires:[],activeBoardId:null}));await expect(page.locator('.wu-schematic-empty')).toBeVisible();
 for(const route of ['/examples','/examples/blink-led','/example/blink-led','/examples/not-real','/es/','/es/editor','/es/prototype','/tools/image-to-code','/en/','/unrecognized']){
-await page.goto('http://127.0.0.1:5173'+route);await expect(page.locator('.wu-main')).not.toBeEmpty();await expect(page.getByRole('link',{name:'Workspace',exact:true})).toBeVisible();
+await page.goto('http://localhost:5173'+route);await expect(page.locator('.wu-main')).not.toBeEmpty();await expect(page.getByRole('link',{name:'Workspace',exact:true})).toBeVisible();
 if(route==='/example/blink-led'||route==='/es/editor'){await expect(page.locator('.wu-live-canvas')).toBeVisible();await page.getByRole('button',{name:'Schematic BETA',exact:true}).click();await expect(page.locator('.wu-schematic')).toBeVisible();}
 }
 await page.getByRole('button',{name:'Settings',exact:true}).first().click();await expect(page.getByRole('dialog',{name:'About Wireup'})).toContainText('AGPLv3');await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
-for(const width of [1481,390]){await page.setViewportSize({width,height:844});for(const route of ['/','/editor','/prototype','/examples']){await page.goto('http://127.0.0.1:5173'+route);await expect(page.locator('.wu-main')).not.toBeEmpty();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
+for(const width of [1481,390]){await page.setViewportSize({width,height:844});for(const route of ['/','/editor','/prototype','/examples']){await page.goto('http://localhost:5173'+route);await expect(page.locator('.wu-main')).not.toBeEmpty();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
 console.log('PAGE_ERRORS',errors);expect(errors).toEqual([]);console.log('PASS reference regression: plain chat transport, projects, imports, empty schematic and shared routes');
 }catch(e){console.log('FAIL_SCREEN',await page.locator('body').innerText());throw e;}finally{await browser.close();}

@@ -5,7 +5,7 @@ const context=await browser.newContext({viewport:{width:1481,height:708},acceptD
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 fs.mkdirSync('artifacts',{recursive:true});
 try{
-await page.goto('http://127.0.0.1:5173/');
+await page.goto('http://localhost:5173/');
 await expect(page.getByRole('heading',{name:'Build something extraordinary.'})).toBeVisible();
 await expect(page.getByRole('button',{name:'Blink an LED',exact:true})).toBeVisible();
 await page.screenshot({path:'artifacts/reference-builder.png'});
@@ -51,7 +51,7 @@ await expect.poll(()=>page.evaluate(()=>window.__velxioStores?.useEditorStore.ge
 await page.getByRole('link',{name:'Build pack',exact:true}).click();await expect(page.locator('.wu-prototype-summary')).toContainText('Physical parts');
 await page.getByRole('link',{name:'Workspace',exact:true}).click();
 await page.getByRole('link',{name:'Projects',exact:true}).click();await expect(page.locator('#projects')).toBeInViewport();
-await page.setViewportSize({width:390,height:844});await page.goto('http://127.0.0.1:5173/');await page.screenshot({path:'artifacts/reference-builder-mobile.png'});
+await page.setViewportSize({width:390,height:844});await page.goto('http://localhost:5173/');await page.screenshot({path:'artifacts/reference-builder-mobile.png'});
 await page.getByRole('button',{name:'Toggle navigation'}).click();await page.getByRole('link',{name:'Templates',exact:true}).click();await expect(page.locator('#templates')).toBeInViewport();
 await page.getByRole('button',{name:'Blink an LED',exact:true}).click();await page.waitForURL('**/editor');
 await page.getByRole('button',{name:'Close assistant'}).click();await expect(page.locator('.wu-live-canvas')).toBeVisible();await page.screenshot({path:'artifacts/reference-circuit-mobile.png'});

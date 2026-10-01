@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import ssl
 from dataclasses import dataclass, field
 from typing import Annotated, Literal, Protocol, Sequence
 from urllib.parse import urlsplit
+from pathlib import Path
+from dotenv import dotenv_values
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -35,6 +38,8 @@ TURN_SYSTEM_PROMPT = (
     "If compilation fails, inspect its actual error, fix the sources, and retry at most twice. "
     "If simulation reports a real issue, stop it, fix the relevant wiring/source and retest at most twice. "
     "Do not treat a running flag alone as proof the entire design works. Explain unsupported parts. "
+    "Write raw source code in firmware arguments, not HTML entities or markdown fences. "
+    "Avoid redundant reads and searches; reuse exact IDs returned by tools to stay within 15 calls. "
     "Finish with project overview, components with quantity and purpose, wiring, firmware, numbered "
     "build instructions, compilation result and simulation result grounded in get_build_result. "
     "Never claim a motor robot is physically safe or verified from a browser simulation. "
@@ -50,7 +55,7 @@ MAX_TOTAL_CHARS = 64_000
 MAX_BODY_BYTES = 128 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_REPLY_CHARS = 32_000
-TOTAL_TIMEOUT_SECONDS = 60.0
+TOTAL_TIMEOUT_SECONDS = 90.0
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
 SYSTEM_PROMPT = (
@@ -132,7 +137,7 @@ class TurnAssistantMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     role: Literal["assistant"] = "assistant"
-    content: str | None = Field(max_length=MAX_REPLY_CHARS)
+    content: str | None = Field(default=None, max_length=MAX_REPLY_CHARS)
     tool_calls: list[ToolCall] | None = Field(default=None, min_length=1, max_length=MAX_TOOL_CALLS)
 
     @model_validator(mode="after")
@@ -241,11 +246,16 @@ class ChatSettings:
 
     @classmethod
     def from_env(cls) -> ChatSettings:
-        return cls(
-            api_key=os.environ.get("AI_API_KEY", "").strip(),
-            base_url=os.environ.get("AI_BASE_URL", DEFAULT_BASE_URL),
-            model=os.environ.get("AI_MODEL", DEFAULT_MODEL),
-        )
+        env_file = Path(__file__).resolve().parents[2] / ".env"
+        local = dotenv_values(env_file) if env_file.exists() else {}
+        def value(name: str, default: str = "") -> str:
+            return os.environ.get(name, local.get(name, default) or "").strip()
+        base_url = value("AI_BASE_URL", DEFAULT_BASE_URL)
+        model = value("AI_MODEL", DEFAULT_MODEL)
+        missing = [name for name, configured in (("AI_BASE_URL", base_url), ("AI_MODEL", model)) if not configured]
+        if missing:
+            raise ChatError(503, "Missing server settings: " + ", ".join(missing) + ". Enter your provider's base URL and model ID in backend/.env.")
+        return cls(api_key=value("AI_API_KEY"), base_url=base_url, model=model)
 
     @property
     def configured(self) -> bool:
@@ -273,6 +283,7 @@ class OpenAICompatibleChatProvider:
             raise ChatError(503, "AI chat is not configured.")
         payload = {
             "model": self.settings.model,
+            "max_tokens": 1024,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 *(message.model_dump() for message in messages),
@@ -320,7 +331,7 @@ class OpenAICompatibleChatProvider:
             if raw.get("function_call") or choice.get("finish_reason") not in ("stop", "length", "tool_calls", None):
                 raise ValueError("Invalid assistant response")
             message = TurnAssistantMessage.model_validate({
-                key: value for key, value in raw.items() if key != "refusal"
+                key: value for key, value in raw.items() if key in {"role", "content", "tool_calls"}
             })
             if choice.get("finish_reason") == "tool_calls" and not message.tool_calls:
                 raise ValueError("Missing tool calls")
@@ -345,21 +356,30 @@ class OpenAICompatibleChatProvider:
                     transport=self.transport,
                     follow_redirects=False,
                     trust_env=False,
+                    verify=ssl.create_default_context(),
                 ) as client:
-                    async with client.stream(
-                        "POST",
-                        self.settings.base_url.rstrip("/") + "/chat/completions",
-                        headers={"Authorization": f"Bearer {self.settings.api_key}"},
-                        json=payload,
-                    ) as response:
-                        self._check_status(response.status_code)
-                        chunks: list[bytes] = []
-                        size = 0
-                        async for chunk in response.aiter_bytes():
-                            size += len(chunk)
-                            if size > MAX_RESPONSE_BYTES:
-                                raise ChatError(502, "AI provider returned an invalid response.")
-                            chunks.append(chunk)
+                    for attempt in range(2):
+                        retry_delay = None
+                        async with client.stream(
+                            "POST",
+                            self.settings.base_url.rstrip("/") + "/chat/completions",
+                            headers={"Authorization": f"Bearer {self.settings.api_key}"},
+                            json=payload,
+                        ) as response:
+                            if response.status_code == 429 and attempt == 0 and self.settings.base_url.startswith('https://api.groq.com/'):
+                                try: retry_delay = min(30.0, max(1.0, float(response.headers.get('retry-after', '30'))))
+                                except ValueError: retry_delay = 10.0
+                            else:
+                                self._check_status(response.status_code)
+                                chunks: list[bytes] = []
+                                size = 0
+                                async for chunk in response.aiter_bytes():
+                                    size += len(chunk)
+                                    if size > MAX_RESPONSE_BYTES:
+                                        raise ChatError(502, "AI provider returned an invalid response.")
+                                    chunks.append(chunk)
+                        if retry_delay is None: break
+                        await asyncio.sleep(retry_delay)
         except (httpx.TimeoutException, TimeoutError):
             raise ChatError(504, "AI provider timed out.") from None
         except httpx.HTTPError:
@@ -374,6 +394,8 @@ class OpenAICompatibleChatProvider:
     def _check_status(status_code: int) -> None:
         if status_code in (401, 403):
             raise ChatError(502, "AI provider authentication failed.")
+        if status_code == 410:
+            raise ChatError(502, "The configured AI model is no longer available. Choose a current provider model and update AI_MODEL in backend/.env.")
         if status_code == 429:
             raise ChatError(429, "AI provider rate limit reached. Try again later.")
         if not 200 <= status_code < 300:

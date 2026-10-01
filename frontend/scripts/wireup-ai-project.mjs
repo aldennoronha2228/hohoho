@@ -18,7 +18,7 @@ try {
         const result = JSON.parse(last.content); toolResults.push(result);
         if (!ultrasonic && !servo && step === 9) expect(result.success).toBe(false);
         else expect(result.success, JSON.stringify(result)).toBe(true);
-        if (step === 1) { state = result.data; boardId = state.parts.find(part => part.component_type === 'arduino-uno').id; firmwareId = state.snapshot.editor.fileGroups[state.snapshot.editor.activeGroupId][0].id; }
+        if (step === 1) { state = result.data; boardId = state.parts.find(part => part.component_type === 'arduino-uno').id; firmwareId = state.firmware.files.find(file => file.group_id === state.firmware.active_group_id).file; }
         if (step === 2) ledId = result.data.component_id;
         if (!ultrasonic && !servo && step === 3) resistorId = result.data.component_id;
       }
@@ -78,7 +78,9 @@ try {
   await assistant.getByLabel('What would you like to build or fix?').fill(servo ? 'Build an Arduino servo sweep project.' : ultrasonic ? 'Build an ultrasonic distance measurement system using Arduino.' : 'Build an Arduino LED blink circuit. Use an external LED and 220 ohm resistor, compile firmware and run simulation.');
   await assistant.getByRole('button', { name: 'Ask Wireup', exact: true }).click();
   const deadline = Date.now() + 180000;
-  while (await assistant.getByRole('button', { name: 'Cancel request' }).count()) {
+  while (await assistant.getByRole('button', { name: 'Cancel request' }).count() || (live && await assistant.getByRole('button', { name: 'Resume build' }).count())) {
+    const resume = assistant.getByRole('button', { name: 'Resume build' });
+    if (live && await resume.isVisible()) { await page.waitForTimeout(30000); await resume.click(); }
     const confirmation = assistant.getByRole('button', { name: 'Allow change', exact: true });
     if (await confirmation.isVisible()) await confirmation.click();
     if (Date.now() > deadline) throw new Error('Build did not finish within the test deadline.');

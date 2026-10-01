@@ -22,7 +22,7 @@ export function Shell({ children }: { children: ReactNode }) {
     window.addEventListener('wireup:save', save);
     return () => { autosave.dispose(); window.removeEventListener('wireup:save', save); };
   }, []);
-  const [restoring, setRestoring] = useState(() => /\/(editor|prototype)\/?$/.test(location.pathname) && Boolean(localStorage.getItem('wireup-active-project')));
+  const [restoring, setRestoring] = useState(() => /\/(editor|prototype|build)\/?$/.test(location.pathname) && Boolean(localStorage.getItem('wireup-active-project')));
   useEffect(() => {
     if (!restoring) return;
     const id = localStorage.getItem('wireup-active-project');
@@ -47,7 +47,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="wu-body">
       {!editing && <aside className={`wu-navigation ${navigationOpen ? 'is-open' : ''}`} aria-label="Builder navigation">
         <NavLink to="/#templates" className="wu-new-project" onClick={() => setNavigationOpen(false)}><Plus size={15}/>New project</NavLink>
-        <nav><NavLink to="/" className={location.pathname === '/' && !location.hash ? 'active' : ''} onClick={() => setNavigationOpen(false)}><HomeIcon size={15}/>Home</NavLink><NavLink to="/#history" className={location.hash === '#history' ? 'active' : ''} onClick={() => setNavigationOpen(false)}><History size={15}/>History</NavLink><NavLink to="/#projects" className={location.hash === '#projects' ? 'active' : ''} onClick={() => setNavigationOpen(false)}><LayoutGrid size={15}/>Projects</NavLink><NavLink to="/#templates" className={location.hash === '#templates' ? 'active' : ''} onClick={() => setNavigationOpen(false)}><LayoutGrid size={15}/>Templates</NavLink><button onClick={() => setAboutOpen(true)}><Settings size={15}/>Settings</button></nav>
+        <nav><NavLink to="/" className={location.pathname === '/' && !location.hash ? 'active' : ''} onClick={() => setNavigationOpen(false)}><HomeIcon size={15}/>Home</NavLink><NavLink to="/history" className={location.pathname.endsWith('/history') ? 'active' : ''} onClick={() => setNavigationOpen(false)}><History size={15}/>History</NavLink><NavLink to="/#projects" className={location.hash === '#projects' ? 'active' : ''} onClick={() => setNavigationOpen(false)}><LayoutGrid size={15}/>Projects</NavLink><NavLink to="/#templates" className={location.hash === '#templates' ? 'active' : ''} onClick={() => setNavigationOpen(false)}><LayoutGrid size={15}/>Templates</NavLink><button onClick={() => setAboutOpen(true)}><Settings size={15}/>Settings</button></nav>
         <div className="wu-navigation-bottom"><div className="wu-local-note"><span>Project storage</span><strong>Local</strong><div/><small>Saved in this browser · export backups</small></div><NavLink className="wu-build-pack-link" to="/prototype"><FolderOpen size={14}/>Open build pack</NavLink><NavLink to="/examples"><LayoutGrid size={14}/>Explore examples</NavLink><button onClick={() => setAboutOpen(true)}><MessageSquare size={14}/>About & acknowledgments</button><NavLink className="wu-local-profile" to="/" aria-label="Wireup home"><span>W</span>Wireup workspace<ChevronDown size={13}/></NavLink></div>
       </aside>}
       <main className="wu-main">{restoring ? <p className="wu-restoring">Restoring your Wireup project…</p> : children}</main>

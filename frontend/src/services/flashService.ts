@@ -113,6 +113,7 @@ export async function* streamFlash(req: FlashRequest): AsyncGenerator<FlashEvent
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
+  let terminal = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -128,7 +129,9 @@ export async function* streamFlash(req: FlashRequest): AsyncGenerator<FlashEvent
         if (!line.startsWith('data:')) continue;
         const json = line.slice(5).trim();
         try {
-          yield JSON.parse(json) as FlashEvent;
+          const event = JSON.parse(json) as FlashEvent;
+          if (event.phase === 'done') terminal = true;
+          yield event;
         } catch (err) {
           // Garbled event - keep going so a single bad packet
           // doesn't kill the whole stream.
@@ -136,6 +139,7 @@ export async function* streamFlash(req: FlashRequest): AsyncGenerator<FlashEvent
         }
       }
     }
+    if (!terminal) yield { phase: 'done', success: false, error: 'Upload connection closed without a completion result. Hardware upload is not confirmed.', elapsed_ms: 0 };
   } finally {
     reader.releaseLock();
   }

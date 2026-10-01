@@ -21,6 +21,12 @@ cd backend
 
 Docker Compose already passes its optional `backend/.env` to the service. Configuration status confirms settings only, not credentials, quota, model access, or connectivity. Provider charges/data policies apply.
 
+## Build conversation page
+
+Submitting the home prompt opens `/build`, a full conversation workspace with the existing sidebar. The configured model generates ten project-specific multiple-choice questions through `/api/ai/chat/questions`. Select Prepare project questions, answer each question, then Start generating. Questions are not a fixed checklist; the original request and selected labels are included in the build message. Editing the request invalidates old questions. Invalid provider output or missing configuration produces an error instead of fabricated fallback questions. **Start generating** sends the request plus answers to the existing model/tool loop. **Conversation** and **Circuit & firmware** switch views of the same project; the existing editor is mounted for real tool execution. Destructive changes still require approval. No hidden reasoning or simulated activity is displayed.
+
+A request is capped at 15 tool operations, including resumed operations. Larger projects may require a follow-up. Rate-limited provider calls can be resumed without silently replaying completed tool changes. Groq requests use verified system certificate trust and a bounded throttling retry; quota exhaustion remains a provider error.
+
 ## Flow
 
 Plain chat uses `POST /api/ai/chat`. It sends only conversation text, not circuit files, and cannot execute actions.
@@ -41,16 +47,22 @@ Circuit creation/update is incremental through these existing operations, not a 
 
 Tool-controlled MicroPython loading remains explicitly unsupported until its loader has a safe cancellation boundary; existing UI controls are unchanged. A successful start reports existing running state, not physical verification or completion of a remote Linux boot.
 
+## Progressive activity and confirmations
+
+The existing Assistant displays expandable activity grouped into Project, Circuit, Firmware, Simulation, and Build guide. Every row comes from an actual requested tool and its execution result. Running indicators appear only while that call is pending; success and errors come from the adapter result. A simulation start is labeled **Simulation started**, not **Simulation completed**. Arguments and full results are available in each row's details.
+
+Normal additive build actions execute automatically after project tools are enabled. Removing a component, disconnecting a wire, changing an existing connection, and replacing substantial original firmware require **Allow change** or **Reject change**. Rejecting sends a failure result to the model without executing that action. Code already authored in the same turn can be debugged without repeated confirmations. Project replacement is not exposed as a tool. Existing recorded component/wire undo actions are retained.
+
 ## Safeguards
 
 - Project tools are opt-in and available in Editor; plain chat remains the default.
 - Tool names and argument schemas are fixed on the server and validated again by browser adapters.
-- Calls execute sequentially with a maximum of 64 operations per user turn and three compilation/start attempts per turn.
+- Calls execute sequentially with a maximum of 15 operations per user turn (including resumed calls) and three compilation/start attempts per turn.
 - Existing mutation guards reject edits while running/busy; invalid pins/files/properties and duplicates return errors.
 - Changed project identity or edits while the model is responding stop execution; pending compilation/start uses the tool runtime's existing revision/stop guards.
 - Cancellation stops further calls and requests simulation stop. Completed component/file/wire changes are retained, not silently rolled back. Backend/provider work may continue after cancellation.
 - The UI displays calls and actual results. The model is instructed to claim success only for successful tool results; model text is still not a hardware certification.
-- Conversations are component-local and clear on New chat, mode changes, or unmount. No cloud conversation storage is introduced.
+- Build conversations and actual tool activity are saved per local project in IndexedDB and can be reopened through History or Open saved conversation. Interrupted running activities restore as cancelled, never as successful. Project state is saved before generation; failures block startup. No cloud conversation storage is introduced.
 
 ## Complete prototype workflow
 

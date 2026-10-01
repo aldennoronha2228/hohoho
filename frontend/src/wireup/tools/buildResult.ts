@@ -3,6 +3,7 @@ import { buildPrototypeModel } from '../prototypeModel';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { ComponentRegistry } from '../../services/ComponentRegistry';
 import { useElectricalStore } from '../../store/useElectricalStore';
+import type { VerificationResult } from '../../simulation/verify/circuitVerifier';
 import type { ToolResult } from './runtime';
 
 function identity(): string {
@@ -11,6 +12,10 @@ function identity(): string {
 }
 let compilation: { identity: string; result: ToolResult } | null = null;
 let simulation: { identity: string; result: ToolResult } | null = null;
+let verification: { identity: string; result: VerificationResult | null } | null = null;
+export function recordCircuitVerification(result: VerificationResult | null) {
+  verification = { identity: identity(), result: result ? JSON.parse(JSON.stringify(result)) as VerificationResult : null };
+}
 
 export function recordBuildOperation(kind: 'compile' | 'simulation', result: ToolResult): void {
   const record = { identity: identity(), result: JSON.parse(JSON.stringify(result)) as ToolResult };
@@ -33,6 +38,7 @@ export function currentBuildResult() {
     build_instructions: model.instructions.map((instruction, index) => ({ step: index + 1, instruction })),
     compilation_result: compilation?.identity === current ? compilation.result : { success: false, error: 'No tool compilation result is available for the current project revision.' },
     simulation_result: { electrical: { converged: useElectricalStore.getState().converged, error: useElectricalStore.getState().error, last_solve_ms: useElectricalStore.getState().lastSolveMs }, last_start: simulation?.identity === current ? simulation.result : { success: false, error: 'No tool simulation-start result is available for the current project revision.' }, running: state.running || state.boards.some(board => board.running), boards: state.boards.map(board => ({ component_id: board.id, running: board.running, program_loaded: Boolean(board.compiledProgram), pi_booted: board.piBooted ?? null })), serial_output: state.boards.map(board => ({ component_id: board.id, output: board.serialOutput })) },
+    circuit_checks: verification?.identity !== current ? { status: 'not_checked', errors: [], warnings: [] } : !verification.result ? { status: 'unavailable_or_not_applicable', errors: [], warnings: [] } : { status: verification.result.errors.length || verification.result.warnings.length ? 'findings' : 'no_findings_in_modeled_checks', errors: verification.result.errors, warnings: verification.result.warnings },
     warnings: model.warnings,
     physical_hardware_verified: false,
   };

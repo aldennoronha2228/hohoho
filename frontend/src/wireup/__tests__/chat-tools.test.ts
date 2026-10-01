@@ -64,6 +64,17 @@ describe('single model tool conversation with real adapters', () => {
     } finally { transport.mockRestore(); }
   });
 
+  it('bounds repeated model calls at 15 operations', async () => {
+    let calls = 0;
+    const transport = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ model: 'test', message: { role: 'assistant', content: null, tool_calls: [{ id: `limit-${++calls}`, type: 'function', function: { name: 'get_firmware', arguments: '{}' } }] } })));
+    const progress = vi.fn();
+    try {
+      await expect(runChatTurn([{ role: 'user', content: 'Keep reading' }], new AbortController().signal, true, progress)).rejects.toThrow('limit reached');
+      expect(progress.mock.calls.filter(([event]) => event.activity?.status === 'success')).toHaveLength(15);
+      expect(calls).toBe(16);
+    } finally { transport.mockRestore(); }
+  });
+
   it('does not execute calls in plain-chat mode', async () => {
     const transport = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ model: 'test', message: { role: 'assistant', content: null, tool_calls: [{ id: 'call1', type: 'function', function: { name: 'set_firmware', arguments: '{"file":"firmware","content":"bad"}' } }] } })));
     try {

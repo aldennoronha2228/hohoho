@@ -268,10 +268,12 @@
   max-height: 180px;
   margin: 0;
   padding: 0;
-  resize: vertical;
+  resize: none;
   border: 0;
   border-radius: 0;
-  outline: none;
+  outline: none !important;
+  box-shadow: none;
+  appearance: none;
   background: transparent;
   color: var(--wu-ai-text);
   font: inherit;

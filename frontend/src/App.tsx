@@ -19,6 +19,8 @@ import './App.css';
 import { Shell } from './wireup/Shell';
 import { Home } from './wireup/Home';
 import { Prototype } from './wireup/Prototype';
+import { BuildConversation } from './wireup/BuildConversation';
+import { BuildHistory } from './wireup/BuildHistory';
 
 /**
  * Single source of truth for the route tree. Each entry is registered
@@ -44,6 +46,8 @@ const ROUTES: { path: string; element: ReactElement; index?: boolean }[] = [
   { path: '/', element: ROOT_ELEMENT, index: true },
   { path: 'editor', element: <EditorPage /> },
   { path: 'prototype', element: <Prototype /> },
+  { path: 'build', element: <BuildConversation /> },
+  { path: 'history', element: <BuildHistory /> },
   { path: 'examples', element: <ExamplesPage /> },
   // /examples/<id> = SEO landing (preview, badges, "Open in Simulator" CTA).
   // /example/<id>  = live editor with the example pre-loaded; the URL
